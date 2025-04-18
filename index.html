@@ -3,68 +3,310 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Project: Data Model Validation with Pydantic</title>
+    <title>FIX Data Transformation & SQL Loading Pipeline</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Merriweather:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* Inline style to enforce consistent base font size */
+        body {
+            font-size: 1rem; /* Base font size */
+        }
+        h1 {
+            font-size: 1.75rem; /* Adjust as needed relative to base */
+        }
+        h2 {
+            font-size: 1.5rem; /* Adjust as needed relative to base */
+        }
+        p, li, a, .subtitle {
+            font-size: 1rem; /* Keep these at the base */
+        }
+        .site-header .subtitle {
+            font-size: 1.1rem; /* Slightly larger than base */
+        }
+        pre, code {
+            font-size: 0.9rem; /* Slightly smaller for code */
+        }
+    </style>
 </head>
 <body>
 
-    <header class="header">
+    <!-- Header Section -->
+    <header class="site-header">
         <div class="container">
-            <h1>Project: Data Model Validation using Pydantic</h1>
+            <h1>FIX Data Transformation & MySQL Loading Pipeline</h1>
+            <p class="subtitle">Dynamically creating a MySQL database from FIX messages and a Bash script for message manipulation</p>
         </div>
     </header>
 
-    <main class="main-content">
-        <div class="container">
-
-            <section id="description" class="content-section">
-                <h2>Project Description</h2>
+    <!-- Main Content Area -->
+    <main>
+        <section id="overview" class="content-section">
+            <div class="container">
+                <h2>Project Overview</h2>
                 <p>
-                    Pydantic is a Python library that simplifies data validation and manipulation. It allows developers to define data structures with validation rules, automatically ensuring incoming data conforms to those rules and raising errors when it doesn't.
+                    This project features two powerful scripts for handling FIX (Financial Information eXchange) protocol messages. The first is a Python script, <code>import_fix_to_db.py</code>, designed to dynamically analyze FIX log files, create a corresponding MySQL database schema, and populate it with the message data. The second is a Bash script, <code>fixfindreplace.sh</code>, which allows for flexible modification of FIX messages, including tag value replacement and the insertion of new tags, while ensuring checksum validity.
                 </p>
-                <p>
-                    Essentially, it helps maintain data consistency and quality within Python projects, making development more robust and reliable.
-                </p>
-            </section>
+            </div>
+        </section>
 
-            <section id="key-usages" class="content-section">
-                <h2>Key Usages</h2>
+        <!-- Python ETL Script Section -->
+        <section id="python-etl" class="content-section alt-bg">
+            <div class="container">
+                <h2>Python Script: <code>import_fix_to_db.py</code> - Dynamic FIX to MySQL ETL</h2>
+                <p>
+                    This Python script, named <code>import_fix_to_db.py</code>, implements a two-pass approach to process FIX log files and load the data into a MySQL database. The dynamic nature of the script allows it to adapt to different FIX message structures without prior knowledge of all possible tags.
+                </p>
+                <h3>Key Features:</h3>
+                <ul class="feature-list">
+                    <li><strong>Dynamic Schema Generation:</strong>
+                        <ul>
+                            <li><strong>Pass 1 (Tag Discovery):</strong> Reads the FIX log file to identify all unique tags present in 'New Order - Single' (MsgType=D) and specific 'Execution Report' (MsgType=8 with OrdStatus=1 or 2) messages.</li>
+                            <li><strong>Pass 2 (Schema Creation & Data Load):</strong> Based on the discovered tags, the script dynamically creates two tables in MySQL: <code>Orders</code> and <code>Executions</code>. Each unique tag becomes a column in the respective table, with an automatically determined SQL data type. Indexes are strategically created for commonly queried tags (e.g., ClOrdID, OrderID, Symbol).</li>
+                        </ul>
+                    </li>
+                    <li><strong>Intelligent Data Type Mapping:</strong> Includes a mapping of common FIX tags to appropriate SQL data types (e.g., timestamps to <code>DATETIME</code>, quantities/prices to <code>DECIMAL</code>, IDs to <code>VARCHAR</code>). A default <code>VARCHAR(255)</code> is used for unmapped tags.</li>
+                    <li><strong>Data Sanitization:</strong> Sanitizes tag numbers to ensure they are valid MySQL column names.</li>
+                    <li><strong>Robust Parsing:</strong> Efficiently parses FIX messages, handling potential variations in log formats.</li>
+                    <li><strong>Data Type Conversion:</strong> Attempts to convert extracted tag values to their corresponding Python types based on the determined SQL type before insertion.</li>
+                    <li><strong>Batch Processing:</strong> Inserts data into MySQL in batches (configurable <code>BATCH_SIZE</code>) to improve performance and manage transaction sizes.</li>
+                    <li><strong>Error Handling and Logging:</strong> Includes comprehensive logging of the process, including warnings for unparseable data and errors during database operations. Failed batch inserts are rolled back.</li>
+                    <li><strong>Idempotent Table Creation:</strong> Drops existing <code>Orders</code> and <code>Executions</code> tables before recreating them, ensuring a clean schema on each run (note: this will erase existing data).</li>
+                </ul>
+                <h3>Database Schema:</h3>
+                <p>The script creates two tables:</p>
                 <ul>
-                    <li><strong>Data Validation:</strong> Ensuring incoming data conforms to defined types and constraints.</li>
-                    <li><strong>Settings Management:</strong> Defining and validating application configuration settings.</li>
-                    <li><strong>API Development:</strong> Defining request and response data structures for APIs.</li>
-                    <li><strong>Data Serialization/Deserialization:</strong> Converting data between Python objects and other formats like JSON.</li>
-                    <li><strong>Type Hinting Enforcement:</strong> Leveraging Python's type hints to automatically validate data.</li>
+                    <li><strong><code>Orders</code>:</strong> Stores information from 'New Order - Single' messages (MsgType=D). Columns include core fields and dynamically added columns for each unique tag found in these messages.</li>
+                    <li><strong><code>Executions</code>:</strong> Stores details from 'Execution Report' messages (MsgType=8 with OrdStatus=1 or 2). Columns include core fields and dynamically added columns for each unique tag found in these messages.</li>
                 </ul>
-            </section>
+                <!--
+                <h3>Code Snippet (Python):</h3>
+                <pre><code class="language-python">
+#!/usr/bin/env python3
+"""
+FIX Message Processor - Dynamic Schema Version (Two-Pass) - v2
+... (rest of your Python script) ...
+"""
+import re
+import mysql.connector
+import json
+from mysql.connector import Error
+from datetime import datetime
+import logging
+from typing import Optional, Dict, Any, Set, Tuple, List
 
-            <section id="related-videos" class="content-section">
-                <h2>Related Video Tutorials</h2>
-                <p>Check out my video tutorials on this project:</p>
-                <ul class="video-list">
-                    <li><a href="#" target="_blank" rel="noopener noreferrer">Video 1: Introduction to Pydantic Validation</a> <span class="video-status">(Link Placeholder)</span></li>
-                    <li><a href="#" target="_blank" rel="noopener noreferrer">Video 2: Advanced Pydantic Features</a> <span class="video-status">(Link Placeholder)</span></li>
-                    <!-- Add more video links here as needed -->
-                </ul>
-                <p class="note">Note: Please replace '#' with the actual video URLs.</p>
-            </section>
+# ... (your DB_CONFIG, LOG_FILE, BATCH_SIZE, FIX_TAG_TYPE_MAP, etc.) ...
 
-            <section id="additional-resources" class="content-section">
-                <h2>Additional Resources</h2>
-                <p class="placeholder-text">
-                    (Content for additional resources, documentation links, or related articles will be added here in the future.)
+# ... (your helper functions: sanitize_column_name, get_sql_type, parse_fix_message, etc.) ...
+
+# --- Pass 1: Tag Discovery ---
+def discover_tags(file_path: str) -> Tuple(Set(str), Set(str)):
+    # ... (your tag discovery logic) ...
+
+# --- Schema Creation ---
+def create_tables_dynamically(order_tags: Set(str), execution_tags: Set(str)) -> Optional(Tuple(List(str), List(str))):
+    # ... (your dynamic table creation logic) ...
+
+# --- Pass 2: Data Processing and Insertion ---
+def process_log_file_dynamic(file_path: str, order_cols: List(str), exec_cols: List(str)) -> None:
+    # ... (your data processing and insertion logic) ...
+
+# --- Main Execution ---
+def main():
+    # ... (your main function) ...
+
+if __name__ == "__main__":
+    main()
+</code></pre>
+-->
+            </div>
+        </section>
+
+        <!-- Bash Script Section -->
+        <section id="bash-script" class="content-section">
+            <div class="container">
+                <h2>Bash Script: <code>fixfindreplace.sh</code> - FIX Message Manipulation</h2>
+                <p>
+                    The <code>fixfindreplace.sh</code> Bash script provides a versatile command-line tool for modifying FIX messages. It allows users to replace existing tag values and insert new tags into FIX messages, while automatically recalculating the crucial checksum (tag 10) to maintain message validity.
                 </p>
-            </section>
+                <h3>Key Features:</h3>
+                <ul class="feature-list">
+                    <li><strong>Tag Value Replacement:</strong> Enables the replacement of specific tag values by providing the tag number, the old value, and the new value (e.g., <code>55=MSFT=CSCO</code> to change the security symbol).</li>
+                    <li><strong>Tag Insertion:</strong> Allows the addition of new tags with specified values (e.g., <code>+43=Y</code> to add a new flag). New tags are inserted before the checksum.</li>
+                    <li><strong>Checksum Recalculation:</strong> Automatically recalculates the FIX checksum (tag 10) after any modifications to ensure message integrity.</li>
+                    <li><strong>SOH Delimiter Handling:</strong> Correctly handles the Standard-On-Header (SOH) delimiter (<code>\x01</code>) that separates FIX message fields.</li>
+                    <li><strong>Verbose Mode:</strong> Includes a <code>-v</code> or <code>--verbose</code> option to display processing details, such as replacements and insertions performed.</li>
+                    <li><strong>Clear Usage Instructions:</strong> Provides a helpful message with usage examples when the script is run with <code>-h</code> or <code>--help</code>, or with invalid arguments.</li>
+                    <li><strong>Input via Pipe:</strong> Designed to accept FIX messages via standard input (piping), making it easy to integrate with other command-line tools.</li>
+                </ul>
+                <h3>Example Usage:</h3>
+                <pre><code class="language-bash">
+# Replace MSFT with CSCO in tag 55 and insert tag 43=Y from a log file:
+cat fix.log | ./fixfindreplace.sh 55=MSFT=CSCO +43=Y
 
-        </div>
+# Multiple replacements and insertions:
+cat another_fix.log | ./fixfindreplace.sh 38=100=200 54=1=2 +58="Custom Text"
+
+# View processing details:
+cat test.log | ./fixfindreplace.sh -v 11=OLD_ID=NEW_ID
+</code></pre>
+<!--
+                <h3>Code Snippet (Bash):</h3>
+                <pre><code class="language-bash">
+#!/bin/bash
+
+# Enhanced FIX Message Modifier Script
+# Handles both tag replacement and insertion in FIX messages with SOH delimiters
+
+show_help() {
+    cat <<EOF
+FIX Message Modifier with Tag Insertion
+... (rest of your help message) ...
+EOF
+}
+
+# Initialize variables
+declare -a replacements
+declare -a insertions
+VERBOSE=0
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        # ... (your argument parsing logic) ...
+    esac
+done
+
+# Process each line
+while IFS= read -r line; do
+    # ... (your line processing, replacement, insertion, and checksum logic) ...
+done
+</code></pre>
+-->
+            </div>
+        </section>
+
+        <!-- SQL Analysis Section -->
+        <section id="sql-analysis" class="content-section alt-bg">
+            <div class="container">
+                <h2>Demonstrating SQL Queries</h2>
+                <p>
+                    Once the FIX data is loaded into the MySQL database using the Python script, it becomes readily available for analysis using SQL. Below are examples of common and powerful SQL queries that can be used to explore and gain insights from the data.
+                </p>
+                <h3>Join Operations:</h3>
+                <p>Demonstrating how to combine data from the <code>Orders</code> and <code>Executions</code> tables based on common fields.</p>
+                <h4>INNER JOIN:</h4>
+                <p>Retrieve all orders that have at least one corresponding execution:</p>
+                <pre><code class="language-sql">
+SELECT
+    o.tag_11 AS ClOrdID,
+    o.tag_55 AS Symbol,
+    e.tag_17 AS ExecID,
+    e.tag_39 AS OrdStatus
+FROM
+    Orders o
+INNER JOIN
+    Executions e ON o.tag_37 = e.tag_37; -- Assuming tag_37 is the OrderID
+</code></pre>
+                <h4>LEFT JOIN:</h4>
+                <p>Retrieve all orders and their associated executions (if any). Orders without executions will have <code>NULL</code> values for execution-related columns:</p>
+                <pre><code class="language-sql">
+SELECT
+    o.tag_11 AS ClOrdID,
+    o.tag_55 AS Symbol,
+    e.tag_17 AS ExecID,
+    e.tag_39 AS OrdStatus
+FROM
+    Orders o
+LEFT JOIN
+    Executions e ON o.tag_37 = e.tag_37;
+</code></pre>
+                <h4>RIGHT JOIN:</h4>
+                <p>Retrieve all executions and their associated orders (if any). Executions without matching orders will have <code>NULL</code> values for order-related columns:</p>
+                <pre><code class="language-sql">
+SELECT
+    o.tag_11 AS ClOrdID,
+    o.tag_55 AS Symbol,
+    e.tag_17 AS ExecID,
+    e.tag_39 AS OrdStatus
+FROM
+    Orders o
+RIGHT JOIN
+    Executions e ON o.tag_37 = e.tag_37;
+</code></pre>
+                <h4>OUTER JOIN (Simulated with <code>UNION</code>):</h4>
+                <p>MySQL does not have a direct <code>FULL OUTER JOIN</code> syntax, but it can be simulated using <code>UNION</code> of <code>LEFT JOIN</code> and <code>RIGHT JOIN</code>:</p>
+                <pre><code class="language-sql">
+SELECT
+    o.tag_11 AS ClOrdID,
+    o.tag_55 AS Symbol,
+    e.tag_17 AS ExecID,
+    e.tag_39 AS OrdStatus
+FROM
+    Orders o
+LEFT JOIN
+    Executions e ON o.tag_37 = e.tag_37
+UNION
+SELECT
+    o.tag_11 AS ClOrdID,
+    o.tag_55 AS Symbol,
+    e.tag_17 AS ExecID,
+    e.tag_39 AS OrdStatus
+FROM
+    Orders o
+RIGHT JOIN
+    Executions e ON o.tag_37 = e.tag_37
+WHERE o.tag_37 IS NULL; -- Avoid duplicates from the LEFT JOIN part
+</code></pre>
+                <h4>SELF JOIN:</h4>
+                <p>Illustrating how to join a table with itself. For example, finding orders with the same <code>ClOrdID</code> but potentially different execution status (this might require more specific use-cases based on your data):</p>
+                <pre><code class="language-sql">
+SELECT
+    o1.tag_11 AS ClOrdID,
+    o1.tag_37 AS OrderID1,
+    o2.tag_37 AS OrderID2
+FROM
+    Orders o1
+INNER JOIN
+    Orders o2 ON o1.tag_11 = o2.tag_11 AND o1.id != o2.id; -- Find orders with the same ClOrdID but different internal IDs
+</code></pre>
+                <p>These examples demonstrate the power of SQL joins in relating and analyzing the order and execution data loaded by your Python script.</p>
+            </div>
+        </section>
+
+        <!-- Video Showcase Section -->
+        <section id="video-showcase" class="content-section alt-bg">
+            <div class="container">
+                <h2>Video Showcase</h2>
+                <p>Watch demonstrations of my scripts in action:</p>
+                <div class="video-links">
+                    <a href="YOUR_PYTHON_VIDEO_URL_HERE" class="video-link" target="_blank">
+                        Python ETL Script Demo <strong>(Coming Soon)</strong>
+                    </a>
+                    <a href="YOUR_BASH_VIDEO_URL_HERE" class="video-link" target="_blank">
+                        Bash FIX Modifier Script Demo <strong>(Coming Soon)</strong>
+                    </a>
+                    <a href="YOUR_SQL_VIDEO_URL_HERE" class="video-link" target="_blank">
+                        SQL Query Examples Demo <strong>(Coming Soon)</strong>
+                    </a>
+                </div>
+                <p class="note">Clicking these buttons will open a new tab to view the video.</p>
+            </div>
+        </section>
+
+        <!-- Back to Main Page -->
+        <section class="content-section">
+            <div class="container">
+                <p><a href="index.html">Back to Project Portfolio</a></p>
+            </div>
+        </section>
     </main>
 
-    <footer class="footer">
+    <!-- Footer Section -->
+    <footer class="site-footer">
         <div class="container">
-            <p>© 2023 [Your Name or Company Name]. All Rights Reserved.</p>
+            <p>© 2025 Apurba Nath. All Rights Reserved.</p>
         </div>
     </footer>
 
